@@ -3,18 +3,13 @@ import $ from 'jquery';
 import React, { Component } from 'react';
 import { FormattedMessage, FormattedHTMLMessage } from 'react-intl';
 import { connect } from 'react-redux';
-import braintreeClient from 'braintree-web/client';
-import dataCollector from 'braintree-web/data-collector';
 import { isEmpty } from 'lodash';
+import dropin from 'braintree-web-drop-in';
 import ee from '../../shared/pub_sub';
 
-import PayPal from '../Braintree/PayPal';
-import BraintreeCardFields from '../Braintree/BraintreeCardFields';
-import PaymentTypeSelection from './PaymentTypeSelection';
 import WelcomeMember from '../WelcomeMember/WelcomeMember';
 import DonateButton from '../DonateButton';
 import Checkbox from '../Checkbox/Checkbox';
-import ShowIf from '../ShowIf';
 import { resetMember } from '../../state/member/reducer';
 import {
   changeStep,
@@ -96,31 +91,26 @@ export class Payment extends Component {
 
   componentDidMount() {
     $.get(BRAINTREE_TOKEN_URL)
-      .done(data => {
-        braintreeClient.create(
-          { authorization: data.token },
-          (error, client) => {
-            // todo: handle err?
-            dataCollector.create(
-              {
-                client,
-                kount: true,
-                paypal: true,
+      .done(({ token }) => {
+        dropin.create(
+          {
+            authorization: token,
+            container: '#braintree-drop-in',
+            paypal: {
+              flow: 'vault',
+            },
+            googlePay: {
+              merchantId: undefined,
+              transactionInfo: {
+                totalPriceStatus: 'FINAL',
+                totalPrice: (
+                  this.props.fundraiser.donationAmount || 0
+                ).toString(),
+                currencyCode: this.props.fundraiser.currency,
               },
-              (err, collectorInst) => {
-                if (err) {
-                  return this.setState({ client, loading: false });
-                }
-
-                const deviceData = collectorInst.deviceData;
-                this.setState({
-                  client,
-                  deviceData: JSON.parse(deviceData),
-                  loading: false,
-                });
-              }
-            );
-          }
+            },
+          },
+          this.onDropinCreate
         );
       })
       .fail(failure => {
@@ -130,6 +120,9 @@ export class Payment extends Component {
 
   componentDidUpdate() {
     ee.emit('sidebar:height_change');
+  }
+  onDropinCreate(/*createErr, instance*/) {
+    // save a reference to instance
   }
 
   selectPaymentType(paymentType: PaymentType) {
@@ -342,7 +335,7 @@ export class Payment extends Component {
 
     return (
       <div className="Payment section">
-        <ShowIf condition={!isEmpty(this.state.errors)}>
+        {!isEmpty(this.state.errors) && (
           <div className="fundraiser-bar__errors">
             <div className="fundraiser-bar__error-intro">
               <span className="fa fa-exclamation-triangle" />
@@ -359,7 +352,7 @@ export class Payment extends Component {
               );
             })}
           </div>
-        </ShowIf>
+        )}
 
         {!this.props.disableFormReveal && (
           <WelcomeMember
@@ -374,37 +367,8 @@ export class Payment extends Component {
           onHide={() => this.setState({ expressHidden: true })}
         />
 
-        <ShowIf condition={this.isExpressHidden()}>
-          <PaymentTypeSelection
-            disabled={this.state.loading}
-            currentPaymentType={this.props.currentPaymentType}
-            onChange={p => this.selectPaymentType(p)}
-          />
-
-          <PayPal
-            ref="paypal"
-            amount={donationAmount}
-            currency={currency}
-            client={this.state.client}
-            vault={recurring || storeInVault}
-            onInit={() => this.paymentInitialized('paypal')}
-          />
-
-          <BraintreeCardFields
-            ref="card"
-            client={this.state.client}
-            recurring={recurring}
-            isActive={currentPaymentType === 'card'}
-            onInit={() => this.paymentInitialized('card')}
-          />
-
-          {currentPaymentType === 'paypal' && (
-            <div className="PaymentMethod__guidance">
-              <FormattedMessage
-                id={'fundraiser.payment_methods.ready_for_paypal'}
-              />
-            </div>
-          )}
+        <div className="Payment-new">
+          <div id="braintree-drop-in" />
 
           {currentPaymentType === 'gocardless' && (
             <div className="PaymentMethod__guidance">
@@ -447,7 +411,7 @@ export class Payment extends Component {
             disabled={this.disableSubmit()}
             onClick={() => this.makePayment()}
           />
-        </ShowIf>
+        </div>
 
         <div className="Payment__fine-print">
           <FormattedHTMLMessage
