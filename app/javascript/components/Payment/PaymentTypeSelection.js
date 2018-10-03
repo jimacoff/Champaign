@@ -9,6 +9,8 @@ import type { PaymentType } from '../../state/fundraiser/types';
 
 type Props = {
   disabled?: boolean,
+  recurring: boolean,
+  recurringOnly: boolean,
   currentPaymentType?: string,
   onChange: (paymentType: string) => void,
   showDirectDebit: boolean,
@@ -34,6 +36,11 @@ export class PaymentTypeSelection extends Component {
       paymentTypes.push('paypal', 'card');
     }
 
+    // These methods don't support recurring payments
+    if (!this.props.recurringOnly) {
+      paymentTypes.push('google');
+    }
+
     return paymentTypes;
   }
 
@@ -51,11 +58,14 @@ export class PaymentTypeSelection extends Component {
           </span>
 
           {this.paymentTypes().map((paymentType, i) => {
+            const currentDisabled =
+              (paymentType === 'google' && this.props.recurring) ||
+              (paymentType === 'apple' && this.props.recurring);
             return (
               <div className={classnames('PaymentMethod', paymentType)} key={i}>
                 <label>
                   <input
-                    disabled={disabled}
+                    disabled={disabled || currentDisabled}
                     type="radio"
                     checked={currentPaymentType === paymentType}
                     onChange={e => onChange(paymentType)}
@@ -75,6 +85,8 @@ export class PaymentTypeSelection extends Component {
 }
 
 export default connect((state: AppState) => ({
+  recurring: state.fundraiser.recurring,
+  recurringOnly: state.fundraiser.recurringDefault === 'only_recurring',
   showDirectDebit: state.fundraiser.showDirectDebit,
   directDebitOnly: state.fundraiser.directDebitOnly,
 }))(PaymentTypeSelection);
